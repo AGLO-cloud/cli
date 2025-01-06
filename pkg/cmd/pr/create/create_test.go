@@ -1622,12 +1622,12 @@ func Test_createRun(t *testing.T) {
 	}
 }
 
-func Test_determineTrackingBranch(t *testing.T) {
+func Test_tryDetermineTrackingRef(t *testing.T) {
 	tests := []struct {
 		name     string
 		cmdStubs func(*run.CommandStubber)
 		remotes  context.Remotes
-		assert   func(ref *git.TrackingRef, t *testing.T)
+		assert   func(ref git.TrackingRef, found bool, t *testing.T)
 	}{
 		{
 			name: "empty",
@@ -1635,8 +1635,9 @@ func Test_determineTrackingBranch(t *testing.T) {
 				cs.Register(`git config --get-regexp.+branch\\\.feature\\\.`, 0, "")
 				cs.Register(`git show-ref --verify -- HEAD`, 0, "abc HEAD")
 			},
-			assert: func(ref *git.TrackingRef, t *testing.T) {
-				assert.Nil(t, ref)
+			assert: func(ref git.TrackingRef, found bool, t *testing.T) {
+				assert.Zero(t, ref)
+				assert.False(t, found)
 			},
 		},
 		{
@@ -1655,8 +1656,9 @@ func Test_determineTrackingBranch(t *testing.T) {
 					Repo:   ghrepo.New("octocat", "Spoon-Knife"),
 				},
 			},
-			assert: func(ref *git.TrackingRef, t *testing.T) {
-				assert.Nil(t, ref)
+			assert: func(ref git.TrackingRef, found bool, t *testing.T) {
+				assert.Zero(t, ref)
+				assert.False(t, found)
 			},
 		},
 		{
@@ -1679,9 +1681,12 @@ func Test_determineTrackingBranch(t *testing.T) {
 					Repo:   ghrepo.New("octocat", "Spoon-Knife"),
 				},
 			},
-			assert: func(ref *git.TrackingRef, t *testing.T) {
-				assert.Equal(t, "upstream", ref.RemoteName)
-				assert.Equal(t, "feature", ref.BranchName)
+			assert: func(ref git.TrackingRef, found bool, t *testing.T) {
+				assert.Equal(t, git.TrackingRef{
+					RemoteName: "upstream",
+					BranchName: "feature",
+				}, ref)
+				assert.True(t, found)
 			},
 		},
 		{
@@ -1702,8 +1707,9 @@ func Test_determineTrackingBranch(t *testing.T) {
 					Repo:   ghrepo.New("hubot", "Spoon-Knife"),
 				},
 			},
-			assert: func(ref *git.TrackingRef, t *testing.T) {
-				assert.Nil(t, ref)
+			assert: func(ref git.TrackingRef, found bool, t *testing.T) {
+				assert.Zero(t, ref)
+				assert.False(t, found)
 			},
 		},
 	}
@@ -1719,8 +1725,9 @@ func Test_determineTrackingBranch(t *testing.T) {
 				GitPath: "some/path/git",
 			}
 			headBranchConfig := gitClient.ReadBranchConfig(ctx.Background(), "feature")
-			ref := determineTrackingBranch(gitClient, tt.remotes, "feature", headBranchConfig)
-			tt.assert(ref, t)
+			ref, found := tryDetermineTrackingRef(gitClient, tt.remotes, "feature", headBranchConfig)
+
+			tt.assert(ref, found, t)
 		})
 	}
 }

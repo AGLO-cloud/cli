@@ -518,9 +518,9 @@ func initDefaultTitleBody(ctx CreateContext, state *shared.IssueMetadataState, u
 	return nil
 }
 
-// determineTrackingBranch is intended to try and find a remote branch on the same commit as the currently checked out
+// tryDetermineTrackingRef is intended to try and find a remote branch on the same commit as the currently checked out
 // HEAD, i.e. the local branch.
-func determineTrackingBranch(gitClient *git.Client, remotes ghContext.Remotes, localBranchName string, headBranchConfig git.BranchConfig) *git.TrackingRef {
+func tryDetermineTrackingRef(gitClient *git.Client, remotes ghContext.Remotes, localBranchName string, headBranchConfig git.BranchConfig) (git.TrackingRef, bool) {
 	// To try and determine the tracking ref for a local branch, we first construct a collection of refs
 	// that might be tracking, given the current branch's config, and the list of known remotes.
 	refsForLookup := []string{"HEAD"}
@@ -557,12 +557,11 @@ func determineTrackingBranch(gitClient *git.Client, remotes ghContext.Remotes, l
 				continue
 			}
 			// Otherwise we can parse the returned ref into a tracking ref and return that
-			trackingRef := mustParseTrackingRef(r.Name)
-			return &trackingRef
+			return mustParseTrackingRef(r.Name), true
 		}
 	}
 
-	return nil
+	return git.TrackingRef{}, false
 }
 
 func mustParseTrackingRef(text string) git.TrackingRef {
@@ -665,14 +664,14 @@ func NewCreateContext(opts *CreateOptions) (*CreateContext, error) {
 	headBranchConfig := gitClient.ReadBranchConfig(context.Background(), headBranch)
 	if isPushEnabled {
 		// determine whether the head branch is already pushed to a remote
-		if pushedTo := determineTrackingBranch(gitClient, remotes, headBranch, headBranchConfig); pushedTo != nil {
+		if trackingRef, found := tryDetermineTrackingRef(gitClient, remotes, headBranch, headBranchConfig); found {
 			isPushEnabled = false
-			if r, err := remotes.FindByName(pushedTo.RemoteName); err == nil {
+			if r, err := remotes.FindByName(trackingRef.RemoteName); err == nil {
 				headRepo = r
 				headRemote = r
-				headBranchLabel = pushedTo.BranchName
+				headBranchLabel = trackingRef.BranchName
 				if !ghrepo.IsSame(baseRepo, headRepo) {
-					headBranchLabel = fmt.Sprintf("%s:%s", headRepo.RepoOwner(), pushedTo.BranchName)
+					headBranchLabel = fmt.Sprintf("%s:%s", headRepo.RepoOwner(), trackingRef.BranchName)
 				}
 			}
 		}
