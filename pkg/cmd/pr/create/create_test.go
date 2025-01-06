@@ -1719,7 +1719,7 @@ func Test_determineTrackingBranch(t *testing.T) {
 				GitPath: "some/path/git",
 			}
 			headBranchConfig := gitClient.ReadBranchConfig(ctx.Background(), "feature")
-			ref := determineTrackingBranch(gitClient, tt.remotes, "feature", &headBranchConfig)
+			ref := determineTrackingBranch(gitClient, tt.remotes, "feature", headBranchConfig)
 			tt.assert(ref, t)
 		})
 	}
