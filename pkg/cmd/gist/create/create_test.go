@@ -225,7 +225,7 @@ func Test_createRun(t *testing.T) {
 			responseStatus: http.StatusOK,
 		},
 		{
-			name: "multiple files",
+			name: "when both a file and the stdin '-' are provided, it matches on all the files",
 			opts: &CreateOptions{
 				Filenames: []string{fixtureFile, "-"},
 			},
