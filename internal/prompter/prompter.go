@@ -150,14 +150,59 @@ func (p *huhPrompter) Confirm(prompt string, _ bool) (bool, error) {
 }
 
 func (p *huhPrompter) AuthToken() (string, error) {
-	panic("not implemented")
+	// var result string
+	// err := p.ask(&survey.Password{
+	// 	Message: "Paste your authentication token:",
+	// }, &result, survey.WithValidator(survey.Required))
+	// return result, err
+
+	var result string
+	form := p.newForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Paste your authentication token:").
+				Validate(func(input string) error {
+					if input == "" {
+						return fmt.Errorf("token is required")
+					}
+					return nil
+				}).
+				Value(&result),
+			// This doesn't have any effect in accessible mode.
+			// EchoMode(huh.EchoModePassword),
+		),
+	)
+
+	err := form.Run()
+	return result, err
 }
 
 func (p *huhPrompter) ConfirmDeletion(requiredValue string) error {
+	// var result string
+	// return p.ask(
+	// 	&survey.Input{
+	// 		Message: fmt.Sprintf("Type %s to confirm deletion:", requiredValue),
+	// 	},
+	// 	&result,
+	// 	survey.WithValidator(
+	// 		func(val interface{}) error {
+	// 			if str := val.(string); !strings.EqualFold(str, requiredValue) {
+	// 				return fmt.Errorf("You entered %s", str)
+	// 			}
+	// 			return nil
+	// 		}))
 	panic("not implemented")
 }
 
 func (p *huhPrompter) InputHostname() (string, error) {
+	// var result string
+	// err := p.ask(
+	// 	&survey.Input{
+	// 		Message: "Hostname:",
+	// 	}, &result, survey.WithValidator(func(v interface{}) error {
+	// 		return ghinstance.HostnameValidator(v.(string))
+	// 	}))
+	// return result, err
 	panic("not implemented")
 }
 
