@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	ghContext "github.com/cli/cli/v2/context"
+	"github.com/cli/cli/v2/git"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	o "github.com/cli/cli/v2/pkg/option"
 	"github.com/stretchr/testify/assert"
@@ -150,6 +152,103 @@ func TestPRFindRefs(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestPullRequestResolution(t *testing.T) {
+	t.Parallel()
+
+	baseRepo := ghrepo.New("owner", "repo")
+	baseRemote := ghContext.Remote{
+		Remote: &git.Remote{
+			Name: "upstream",
+		},
+		Repo: ghrepo.New("owner", "repo"),
+	}
+
+	forkRemote := ghContext.Remote{
+		Remote: &git.Remote{
+			Name: "origin",
+		},
+		Repo: ghrepo.New("otherowner", "repo-fork"),
+	}
+
+	t.Run("when the base repo is nil, returns an error", func(t *testing.T) {
+		t.Parallel()
+
+		resolver := NewPullRequestFindRefsResolver(stubGitConfigClient{}, dummyRemotesFn)
+		_, err := resolver.ResolvePullRequestRefs(nil, "", "")
+		require.Error(t, err)
+	})
+
+	t.Run("when the local branch name is empty, returns an error", func(t *testing.T) {
+		t.Parallel()
+
+		resolver := NewPullRequestFindRefsResolver(stubGitConfigClient{}, dummyRemotesFn)
+		_, err := resolver.ResolvePullRequestRefs(baseRepo, "", "")
+		require.Error(t, err)
+	})
+
+	t.Run("when the default pr head has a repo, it is used for the refs", func(t *testing.T) {
+		t.Parallel()
+
+		resolver := NewPullRequestFindRefsResolver(
+			stubGitConfigClient{
+				pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{
+					Remote: "origin",
+					Branch: "feature-branch",
+				}, nil),
+			},
+			stubRemotes(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+		)
+
+		refs, err := resolver.ResolvePullRequestRefs(baseRepo, "main", "feature-branch")
+		require.NoError(t, err)
+
+		expectedRefs := PRFindRefs{
+			qualifiedHeadRef: QualifiedHeadRef{
+				owner:      o.Some("otherowner"),
+				branchName: "feature-branch",
+			},
+			baseRepo:       baseRepo,
+			baseBranchName: o.Some("main"),
+		}
+
+		require.Equal(t, expectedRefs, refs)
+	})
+
+	t.Run("when the default pr head does not have a repo, we use the base repo for the head", func(t *testing.T) {
+		t.Parallel()
+
+		// All the values stubbed here result in being unable to resolve a default repo.
+		noRepoResolutionStubClient := stubGitConfigClient{
+			pushRevisionFn:      stubPushRevision(git.RemoteTrackingRef{}, errors.New("test error")),
+			readBranchConfigFn:  stubBranchConfig(git.BranchConfig{}, nil),
+			pushDefaultFn:       stubPushDefault("", nil),
+			remotePushDefaultFn: stubRemotePushDefault("", nil),
+		}
+
+		resolver := NewPullRequestFindRefsResolver(
+			noRepoResolutionStubClient,
+			stubRemotes(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+		)
+
+		refs, err := resolver.ResolvePullRequestRefs(baseRepo, "main", "feature-branch")
+		require.NoError(t, err)
+
+		expectedRefs := PRFindRefs{
+			qualifiedHeadRef: QualifiedHeadRef{
+				owner:      o.None[string](),
+				branchName: "feature-branch",
+			},
+			baseRepo:       baseRepo,
+			baseBranchName: o.Some("main"),
+		}
+		require.Equal(t, expectedRefs, refs)
+	})
+}
+
+func dummyRemotesFn() (ghContext.Remotes, error) {
+	panic("not implemented")
 }
 
 func mustParseQualifiedHeadRef(ref string) QualifiedHeadRef {
