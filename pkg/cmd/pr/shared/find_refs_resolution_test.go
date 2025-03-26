@@ -2,6 +2,7 @@ package shared
 
 import (
 	"errors"
+	"net/url"
 	"testing"
 
 	ghContext "github.com/cli/cli/v2/context"
@@ -191,13 +192,17 @@ func TestPullRequestResolution(t *testing.T) {
 	t.Run("when the default pr head has a repo, it is used for the refs", func(t *testing.T) {
 		t.Parallel()
 
+		// Push revision is the first thing checked for resolution,
+		// so nothing else needs to be stubbed.
+		repoResolvedFromPushRevisionClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{
+				Remote: "origin",
+				Branch: "feature-branch",
+			}, nil),
+		}
+
 		resolver := NewPullRequestFindRefsResolver(
-			stubGitConfigClient{
-				pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{
-					Remote: "origin",
-					Branch: "feature-branch",
-				}, nil),
-			},
+			repoResolvedFromPushRevisionClient,
 			stubRemotes(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
 		)
 
@@ -247,8 +252,250 @@ func TestPullRequestResolution(t *testing.T) {
 	})
 }
 
+func TestTryDetermineDefaultPRHead(t *testing.T) {
+	t.Parallel()
+
+	baseRepo := ghrepo.New("owner", "repo")
+	baseRemote := ghContext.Remote{
+		Remote: &git.Remote{
+			Name: "upstream",
+		},
+		Repo: baseRepo,
+	}
+
+	forkRepo := ghrepo.New("otherowner", "repo-fork")
+	forkRemote := ghContext.Remote{
+		Remote: &git.Remote{
+			Name: "origin",
+		},
+		Repo: forkRepo,
+	}
+	forkRepoURL, err := url.Parse("https://github.com/otherowner/repo-fork.git")
+	require.NoError(t, err)
+
+	t.Run("when the push revision is set, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRevisionClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{
+				Remote: "origin",
+				Branch: "remote-feature-branch",
+			}, nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRevisionClient,
+			stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "remote-feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when the branch config push remote is set to a name, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRemoteClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("no push revision")),
+			readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+				PushRemoteName: "origin",
+			}, nil),
+			pushDefaultFn: stubPushDefault(git.PushDefaultCurrent, nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRemoteClient,
+			stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when the branch config push remote is set to a URL, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRemoteClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("no push revision")),
+			readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+				PushRemoteURL: forkRepoURL,
+			}, nil),
+			pushDefaultFn: stubPushDefault(git.PushDefaultCurrent, nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRemoteClient,
+			dummyRemoteToRepoResolver(),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when a remote push default is set, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRemoteClient := stubGitConfigClient{
+			pushRevisionFn:      stubPushRevision(git.RemoteTrackingRef{}, errors.New("no push revision")),
+			readBranchConfigFn:  stubBranchConfig(git.BranchConfig{}, nil),
+			pushDefaultFn:       stubPushDefault(git.PushDefaultCurrent, nil),
+			remotePushDefaultFn: stubRemotePushDefault("origin", nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRemoteClient,
+			stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+	t.Run("when the branch config remote is set to a name, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRemoteClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("no push revision")),
+			readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+				RemoteName: "origin",
+			}, nil),
+			pushDefaultFn:       stubPushDefault(git.PushDefaultCurrent, nil),
+			remotePushDefaultFn: stubRemotePushDefault("", nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRemoteClient,
+			stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when the branch config remote is set to a URL, use that", func(t *testing.T) {
+		t.Parallel()
+
+		repoResolvedFromPushRemoteClient := stubGitConfigClient{
+			pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("no push revision")),
+			readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+				RemoteURL: forkRepoURL,
+			}, nil),
+			pushDefaultFn:       stubPushDefault(git.PushDefaultCurrent, nil),
+			remotePushDefaultFn: stubRemotePushDefault("", nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			repoResolvedFromPushRemoteClient,
+			dummyRemoteToRepoResolver(),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when git didn't provide the necessary information, return none for the remote", func(t *testing.T) {
+		t.Parallel()
+
+		// All the values stubbed here result in being unable to resolve a default repo.
+		noRepoResolutionStubClient := stubGitConfigClient{
+			pushRevisionFn:      stubPushRevision(git.RemoteTrackingRef{}, errors.New("test error")),
+			readBranchConfigFn:  stubBranchConfig(git.BranchConfig{}, nil),
+			pushDefaultFn:       stubPushDefault("", nil),
+			remotePushDefaultFn: stubRemotePushDefault("", nil),
+		}
+
+		defaultPRHead, err := TryDetermineDefaultPRHead(
+			noRepoResolutionStubClient,
+			stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+			"feature-branch",
+		)
+		require.NoError(t, err)
+
+		require.True(t, defaultPRHead.Repo.IsNone(), "expected repo to be none")
+		require.Equal(t, "feature-branch", defaultPRHead.BranchName)
+	})
+
+	t.Run("when the push default is tracking or upstream, use the merge ref", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			pushDefault git.PushDefault
+		}{
+			{pushDefault: git.PushDefaultTracking},
+			{pushDefault: git.PushDefaultUpstream},
+		}
+
+		for _, tc := range testCases {
+			t.Run(string(tc.pushDefault), func(t *testing.T) {
+				t.Parallel()
+
+				repoResolvedFromPushRemoteClient := stubGitConfigClient{
+					pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("test error")),
+					readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+						PushRemoteName: "origin",
+						MergeRef:       "main",
+					}, nil),
+					pushDefaultFn: stubPushDefault(tc.pushDefault, nil),
+				}
+
+				defaultPRHead, err := TryDetermineDefaultPRHead(
+					repoResolvedFromPushRemoteClient,
+					stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+					"feature-branch",
+				)
+				require.NoError(t, err)
+
+				require.True(t, ghrepo.IsSame(defaultPRHead.Repo.Unwrap(), forkRepo), "expected repos to be the same")
+				require.Equal(t, "main", defaultPRHead.BranchName)
+			})
+		}
+
+		t.Run("but if the merge ref is empty, error", func(t *testing.T) {
+			t.Parallel()
+
+			repoResolvedFromPushRemoteClient := stubGitConfigClient{
+				pushRevisionFn: stubPushRevision(git.RemoteTrackingRef{}, errors.New("test error")),
+				readBranchConfigFn: stubBranchConfig(git.BranchConfig{
+					PushRemoteName: "origin",
+					MergeRef:       "", // intentionally empty
+				}, nil),
+				pushDefaultFn: stubPushDefault(git.PushDefaultUpstream, nil),
+			}
+
+			_, err := TryDetermineDefaultPRHead(
+				repoResolvedFromPushRemoteClient,
+				stubRemoteToRepoResolver(ghContext.Remotes{&baseRemote, &forkRemote}, nil),
+				"feature-branch",
+			)
+			require.Error(t, err)
+		})
+	})
+
+}
+
 func dummyRemotesFn() (ghContext.Remotes, error) {
-	panic("not implemented")
+	panic("remotes fn not implemented")
+}
+
+func dummyRemoteToRepoResolver() remoteToRepoResolver {
+	return NewRemoteToRepoResolver(dummyRemotesFn)
+}
+
+func stubRemoteToRepoResolver(remotes ghContext.Remotes, err error) remoteToRepoResolver {
+	return NewRemoteToRepoResolver(func() (ghContext.Remotes, error) {
+		return remotes, err
+	})
 }
 
 func mustParseQualifiedHeadRef(ref string) QualifiedHeadRef {
