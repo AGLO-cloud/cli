@@ -100,9 +100,9 @@ func (r baseRefs) BaseRepo() *api.Repository {
 }
 
 type skipPushRefs struct {
-	qualifiedHeadRef shared.QualifiedHeadRef
-
 	baseRefs
+
+	qualifiedHeadRef shared.QualifiedHeadRef
 }
 
 func (r skipPushRefs) QualifiedHeadRef() string {
@@ -114,10 +114,10 @@ func (r skipPushRefs) UnqualifiedHeadRef() string {
 }
 
 type pushableRefs struct {
+	baseRefs
+
 	headRepo       ghrepo.Interface
 	headBranchName string
-
-	baseRefs
 }
 
 func (r pushableRefs) QualifiedHeadRef() string {
@@ -136,9 +136,9 @@ func (r pushableRefs) HeadRepo() ghrepo.Interface {
 }
 
 type forkableRefs struct {
-	qualifiedHeadRef shared.QualifiedHeadRef
-
 	baseRefs
+
+	qualifiedHeadRef shared.QualifiedHeadRef
 }
 
 func (r forkableRefs) QualifiedHeadRef() string {
