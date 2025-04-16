@@ -17,11 +17,12 @@ import (
 
 func TestNewCmdPin(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		output  UnpinOptions
-		wantErr bool
-		errMsg  string
+		name             string
+		input            string
+		output           UnpinOptions
+		expectedBaseRepo ghrepo.Interface
+		wantErr          bool
+		errMsg           string
 	}{
 		{
 			name:    "no argument",
@@ -33,15 +34,16 @@ func TestNewCmdPin(t *testing.T) {
 			name:  "issue number",
 			input: "6",
 			output: UnpinOptions{
-				SelectorArg: "6",
+				IssueNumber: 6,
 			},
 		},
 		{
 			name:  "issue url",
-			input: "https://github.com/cli/cli/6",
+			input: "https://github.com/cli/cli/issues/6",
 			output: UnpinOptions{
-				SelectorArg: "https://github.com/cli/cli/6",
+				IssueNumber: 6,
 			},
+			expectedBaseRepo: ghrepo.New("cli", "cli"),
 		},
 	}
 	for _, tt := range tests {
@@ -72,7 +74,7 @@ func TestNewCmdPin(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
-			assert.Equal(t, tt.output.SelectorArg, gotOpts.SelectorArg)
+			assert.Equal(t, tt.output.IssueNumber, gotOpts.IssueNumber)
 		})
 	}
 }
@@ -89,7 +91,7 @@ func TestUnpinRun(t *testing.T) {
 		{
 			name: "unpin issue",
 			tty:  true,
-			opts: &UnpinOptions{SelectorArg: "20"},
+			opts: &UnpinOptions{IssueNumber: 20},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
 					httpmock.GraphQL(`query IssueByNumber\b`),
@@ -113,7 +115,7 @@ func TestUnpinRun(t *testing.T) {
 		{
 			name: "issue not pinned",
 			tty:  true,
-			opts: &UnpinOptions{SelectorArg: "20"},
+			opts: &UnpinOptions{IssueNumber: 20},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
 					httpmock.GraphQL(`query IssueByNumber\b`),
