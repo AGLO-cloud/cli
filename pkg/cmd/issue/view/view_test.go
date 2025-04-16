@@ -116,7 +116,7 @@ func TestIssueView_web(t *testing.T) {
 			return ghrepo.New("OWNER", "REPO"), nil
 		},
 		WebMode:     true,
-		SelectorArg: "123",
+		IssueNumber: 123,
 	})
 	if err != nil {
 		t.Errorf("error running command `issue view`: %v", err)
@@ -273,7 +273,7 @@ func TestIssueView_tty_Preview(t *testing.T) {
 				BaseRepo: func() (ghrepo.Interface, error) {
 					return ghrepo.New("OWNER", "REPO"), nil
 				},
-				SelectorArg: "123",
+				IssueNumber: 123,
 			}
 
 			err := viewRun(&opts)
