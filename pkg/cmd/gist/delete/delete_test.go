@@ -347,16 +347,17 @@ func Test_gistDelete(t *testing.T) {
 			gistID:   "1234",
 		},
 		{
-			name: "when an gist is not found, it returns a NotFoundError",
+			name: "when a gist is not found, it returns a NotFoundError",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
 					httpmock.REST("DELETE", "gists/1234"),
 					httpmock.StatusStringResponse(404, "{}"),
 				)
 			},
-			hostname: "github.com",
-			gistID:   "1234",
-			wantErr:  shared.NotFoundErr,
+			hostname:      "github.com",
+			gistID:        "1234",
+			wantErr:       shared.NotFoundErr, // To make sure we return the pre-defined error instance.
+			wantErrString: "not found",
 		},
 		{
 			name: "when there is a non-404 error deleting the gist, that error is returned",
@@ -382,14 +383,16 @@ func Test_gistDelete(t *testing.T) {
 			client := api.NewClientFromHTTP(&http.Client{Transport: reg})
 
 			err := deleteGist(client, tt.hostname, tt.gistID)
-			if tt.wantErrString != "" {
-				require.EqualError(t, err, tt.wantErrString)
-			} else if tt.wantErr != nil {
-				require.ErrorIs(t, err, tt.wantErr)
-			} else {
+			if tt.wantErrString == "" && tt.wantErr == nil {
 				require.NoError(t, err)
+			} else {
+				if tt.wantErrString != "" {
+					require.EqualError(t, err, tt.wantErrString)
+				}
+				if tt.wantErr != nil {
+					require.ErrorIs(t, err, tt.wantErr)
+				}
 			}
-
 		})
 	}
 }
