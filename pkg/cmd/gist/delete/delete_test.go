@@ -364,7 +364,7 @@ func Test_gistDelete(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
 					httpmock.REST("DELETE", "gists/1234"),
-					httpmock.StatusJSONResponse(500, ghAPI.HTTPError{
+					httpmock.JSONErrorResponse(500, ghAPI.HTTPError{
 						StatusCode: 500,
 						Message:    "arbitrary error",
 					}),
