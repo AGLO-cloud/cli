@@ -18,6 +18,7 @@ import (
 	ghAPI "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/google/shlex"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCmdDelete(t *testing.T) {
@@ -382,11 +383,11 @@ func Test_gistDelete(t *testing.T) {
 
 			err := deleteGist(client, tt.hostname, tt.gistID)
 			if tt.wantErrString != "" {
-				assert.EqualError(t, err, tt.wantErrString)
+				require.EqualError(t, err, tt.wantErrString)
 			} else if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
+				require.ErrorIs(t, err, tt.wantErr)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 		})
